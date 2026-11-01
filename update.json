@@ -1,9 +1,9 @@
 {
   "versionCode": 5,
   "versionName": "1.2.2",
-  "apkUrl": "https://github.com/ajiputra001/SiteRute/releases/download/v1.2.1/SiteRoute.apk",
-  "sha256": "9dbe558d63e2bc770583a3981b0d76c50fd89747abea62b175d187363767a738",
-  "notes": "Uji popup via rilis GitHub sungguhan: unduh dari release, verifikasi SHA-256, lalu pasang.",
-  "force": true,
-  "minVersionCode": 5
+  "apkUrl": "https://github.com/ajiputra001/SiteRute/releases/latest/download/SiteRoute.apk",
+  "sha256": "2ee3818728ddb94e380305f62693b4a7ecb4d656c0bd55c1188cfe291b9aa15b",
+  "notes": "",
+  "force": false,
+  "minVersionCode": 1
 }

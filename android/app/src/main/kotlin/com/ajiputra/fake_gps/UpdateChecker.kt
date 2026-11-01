@@ -62,18 +62,37 @@ object UpdateChecker {
 
     // ---------------------------------------------------------------- manifest
 
-    /** Fetches the manifest and caches it. Never throws; returns null on any failure. */
+    /**
+     * Fetches the manifest and caches it. Never throws; returns null on any failure.
+     *
+     * A `?t=<minute>` cache-buster is appended because `raw.githubusercontent.com` serves
+     * through a CDN that holds a branch path for a few minutes. Without it, a release
+     * pushed moments ago is invisible to devices that fetched shortly before it — the app
+     * would keep reporting the previous version until the edge cache expires. The query
+     * string is ignored by the server but makes the CDN treat each minute as a new object.
+     */
     fun fetchManifest(context: Context): Manifest? {
+        val busted = UpdateConfig.MANIFEST_URL + manifestCacheBuster()
         val raw = try {
-            httpGet(UpdateConfig.MANIFEST_URL)
+            httpGet(busted)
         } catch (_: Throwable) {
-            null
+            // A cache-busted URL can miss on a proxy that keyed on the plain path, so one
+            // retry at the bare URL is worth the extra round trip.
+            try {
+                httpGet(UpdateConfig.MANIFEST_URL)
+            } catch (_: Throwable) {
+                null
+            }
         } ?: return null
 
         val parsed = parse(raw) ?: return null
         cache(context, raw)
         return parsed
     }
+
+    /** Minute-granularity token; the CDN edge then keys on it. */
+    private fun manifestCacheBuster(): String =
+        "?t=" + (System.currentTimeMillis() / 60_000L)
 
     /**
      * Returns the manifest to trust right now.
@@ -362,6 +381,11 @@ object UpdateChecker {
             readTimeout = UpdateConfig.READ_TIMEOUT_MS
             instanceFollowRedirects = true
             requestMethod = "GET"
+            // Belt to the cache-buster's braces: tells any intermediate cache — the CDN,
+            // a carrier proxy — that this response must be revalidated rather than served
+            // from a stale copy.
+            setRequestProperty("Cache-Control", "no-cache")
+            setRequestProperty("Pragma", "no-cache")
         }
         return try {
             if (conn.responseCode !in 200..299) {
