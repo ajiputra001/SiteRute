@@ -1,0 +1,90 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// ---------------------------------------------------------------- release signing
+//
+// The updater installs over the existing app, and the platform allows that only when
+// both builds carry the same certificate. `signingConfigs.debug` worked for adb installs
+// but is tied to whichever machine ran Gradle — a build from another laptop would be
+// rejected as "App not installed" with no explanation. A committed-by-location keystore
+// makes the identity stable across machines and across releases.
+//
+// The file itself is git-ignored; only the path is shared. When key.properties is absent
+// the release falls back to the debug key so a clean clone still builds.
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+android {
+    namespace = "com.ajiputra.fake_gps"
+    compileSdk = 34
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            release {
+                storeFile = rootProject.file(keystoreProperties["storeFile"])
+                storePassword = keystoreProperties["storePassword"]
+                keyAlias = keystoreProperties["keyAlias"]
+                keyPassword = keystoreProperties["keyPassword"]
+            }
+        }
+    }
+
+    defaultConfig {
+        // Neutral application id: driver-dispatch clients commonly score an installed
+        // package by name (`fake`, `mock`, `gps`, `location-spoofer`) against a wordlist
+        // pulled from the app's own `QUERY_ALL_PACKAGES` scan. A neutral id costs nothing
+        // and removes that signal entirely. The Kotlin package below stays as-is; only
+        // the shipped id changes.
+        applicationId = "com.ajiputra.telemetrykit"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    lint {
+        // FixSynthesizer reads Location.mFieldsMask to clear the mock bit on fixes this
+        // app reads back itself (see clearMockFlag — this does not hide the flag from
+        // other apps). The field has no public equivalent, so lintVital fails the
+        // release build on it. The read is guarded by API level and runCatching.
+        disable += "BlockedPrivateApi"
+    }
+
+    buildTypes {
+        release {
+            signingConfig = keystorePropertiesFile.exists()
+                ? signingConfigs.release
+                : signingConfigs.debug
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+        debug {
+            // Ships beside a release install without clobbering it.
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}

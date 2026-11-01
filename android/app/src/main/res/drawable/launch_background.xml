@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native launch window.
+
+  This is what the operator sees for the first ~300–800 ms, before the Flutter engine
+  draws its first frame. The default Flutter template ships a flat white rectangle here,
+  which reads as "blank" on a dark-themed app and was the reported complaint.
+
+  The composition mirrors the in-app splash so the handoff is invisible: the same
+  near-black backdrop, the same teal wash from the logo's own colour, and the launcher
+  mark centred. `windowDisablePreview` is deliberately NOT set on the theme, so this
+  drawable is actually shown instead of the system's half-drawn window.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Base: the app's scaffold colour, not white. -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#081014" />
+        </shape>
+    </item>
+
+    <!-- Teal glow behind the mark, centred, soft radius. Radial gradients in a
+         layer-list need a gradient shape with a fixed size, so this is a plain
+         centred box rather than a true vignette. -->
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <size android:width="380dp" android:height="380dp" />
+            <gradient
+                android:type="radial"
+                android:gradientRadius="190dp"
+                android:startColor="#3314B4CC"
+                android:centerColor="#1414B4CC"
+                android:endColor="#00081014" />
+        </shape>
+    </item>
+
+    <!-- The mark itself. Density-specific PNGs are picked up automatically. -->
+    <item android:gravity="center">
+        <bitmap
+            android:gravity="center"
+            android:src="@mipmap/ic_launcher_foreground"
+            android:antialias="true" />
+    </item>
+
+</layer-list>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths the FileProvider is allowed to serve.
+
+  Only `updates/` under the app's private cache is exposed — that is where the updater
+  writes the downloaded APK. Nothing else in app-private storage is reachable through
+  the provider, so a mis-built intent cannot leak saved points or preferences.
+-->
+<paths>
+    <cache-path
+        name="updates"
+        path="updates/" />
+</paths>

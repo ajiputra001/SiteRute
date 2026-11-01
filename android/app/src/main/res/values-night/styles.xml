@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark-mode variant of the launch theme. Kept identical to `values/styles.xml`
+         on purpose: this app is dark-only, so the OS dark-mode toggle must not change
+         what the user sees on start. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">#081014</item>
+        <item name="android:navigationBarColor">#081014</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">#081014</item>
+        <item name="android:statusBarColor">#081014</item>
+        <item name="android:navigationBarColor">#081014</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

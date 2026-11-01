@@ -1,0 +1,106 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Reading the device location before/after mocking, and required by the
+         `location` foreground service type on Android 14+. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- The service that keeps the mock alive while the UI is backgrounded. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Without this the app is not listed in the AOSP battery-optimisation picker at
+         all: `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` only resolves a package that
+         declares it. ColorOS additionally gates its own "App battery saver" list behind a
+         live, running foreground service — see openBatterySettings in MainActivity. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- External watchdog: ColorOS freezes the whole process (ColorHansManager), which
+         stops the Handler tick. An exact alarm wakes the process back up.
+         SCHEDULE_EXACT_ALARM is the correct declaration: it is user-revocable, so the
+         code path that checks `canScheduleExactAlarms()` stays meaningful. USE_EXACT_ALARM
+         is deliberately NOT declared — it is granted at install and cannot be revoked,
+         which would make that check always true and is restricted to alarm/calendar apps
+         by Play policy anyway. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Legacy (API < 23). Harmless on newer builds; the actual gate there is the
+         "Select mock location app" developer setting, checked via AppOps. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_MOCK_LOCATION"
+        tools:ignore="MockLocation,ProtectedPermissions" />
+
+    <!-- Installing the downloaded update. Without this the system refuses the
+         PackageInstaller intent outright on API 26+; the user must additionally grant
+         "Install unknown apps" per-package, which the app opens for them. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="SiteRoute"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name="com.ajiputra.fake_gps.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name="com.ajiputra.fake_gps.MockLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
+
+        <!-- Alarm-driven revive. ColorOS suspends the process after the UI leaves the
+             foreground, which silently kills the Handler-based tick. This receiver is
+             the only component that can pull the process back out of a freeze. -->
+        <receiver
+            android:name="com.ajiputra.fake_gps.WatchdogReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+        <!-- Serves the downloaded APK to PackageInstaller. Since API 24 a file:// URI
+             in an install intent throws FileUriExposedException, so the APK lives in
+             app-private cache and is handed over through this provider instead. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>
