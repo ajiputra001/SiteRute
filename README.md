@@ -1,4 +1,4 @@
-# Telemetry Kit — Flutter + Android mock location
+# SiteRoute — Flutter + Android mock location
 
 Satu layar, satu pekerjaan: pilih satu koordinat, tahan di situ. Flutter untuk UI,
 Kotlin untuk `LocationManager` test provider yang dijalankan lewat foreground service.
@@ -15,12 +15,13 @@ Android menolak semua `setTestProviderLocation` kecuali aplikasi dipilih sebagai
 
 1. Setelan → Tentang ponsel → ketuk **Nomor build** 7×.
 2. Setelan → Sistem → **Opsi pengembang**.
-3. **"Pilih aplikasi lokasi tiruan"** → pilih **Telemetry Kit**.
+3. **"Pilih aplikasi lokasi tiruan"** → pilih **SiteRoute**.
 
 Lalu, supaya service tidak dibekukan ROM:
 
-4. Di aplikasi, buka **Diagnosa** → baris **Optimasi baterai** → **Ubah**, kecualikan
-   aplikasi ini. Di ColorOS/MIUI aktifkan juga *Auto-start*.
+4. Saat app dibuka, baris peringatan baterai muncul di bawah kartu kontrol — tap **Ubah**
+   untuk membuka halaman pengecualian baterai, lalu izinkan. Di ColorOS/MIUI aktifkan
+   juga *Auto-start*. Baris peringatan hilang sendiri begitu kedua gate lolos.
 
 | Izin | Kenapa |
 |---|---|
@@ -41,16 +42,21 @@ flutter build apk --release    # build/app/outputs/flutter-apk/
 Flutter 3.24 · AGP 8.3.2 · Gradle 8.7 · Kotlin 1.9.22 · compileSdk/targetSdk 34 ·
 minSdk 24 · JDK 17.
 
+Release ditandatangani keystore tetap di `android/keystore/siteroute-release.jks`
+(kredensial di `android/key.properties`). Keduanya git-ignored — **simpan salinannya**:
+tanpa sertifikat yang sama, update tidak bisa dipasang di atas app yang sudah ada.
+
+Tanpa `key.properties`, build jatuh ke debug key dan tidak bisa menimpa rilis.
+
 ---
 
 ## 3. Yang bisa dilakukan
 
 - Tap peta, cari nama tempat (Nominatim), atau isi lat/lng lewat dialog koordinat.
-- Simpan titik favorit sebagai chip; tap untuk lompat, long-press untuk hapus.
+- Simpan titik favorit; tombol bookmark di header membuka sheet berisi semua titik —
+  tap untuk lompat, ikon pensil untuk rename, ikon hapus untuk membuang.
 - Mulai / Stop mocking dari satu tombol.
 - Ganti basemap saat berjalan: Google, Google Satelit, Esri, Esri Satelit, OSM.
-- Diagnosa: status gate, matriks provider, dan **uji baca ulang** — membaca
-  `getLastKnownLocation` tiap provider lalu membandingkannya dengan koordinat mock.
 - Semua setelan (basemap, titik terakhir, kamera) tersimpan antar-restart.
 
 Tidak ada mode rute, kecepatan, arah gerak, atau jitter — posisi diam di satu titik.
@@ -64,19 +70,26 @@ lib/
   main.dart                     # tema + root
   core/geo.dart                 # format koordinat & jarak
   core/mock_bridge.dart         # MethodChannel, MockStatus, ProviderHealth, probe
+  core/update_bridge.dart       # MethodChannel updater, UpdateInfo
   models/map_source.dart        # 5 tile provider
   models/mock_request.dart      # payload statis ke service
   models/spot.dart              # titik favorit
   services/settings_store.dart  # AppSettings
   services/spot_store.dart      # favorit
   services/geocoder.dart        # Nominatim search
-  screens/map_screen.dart       # peta + kartu kontrol
-  widgets/diagnostics_sheet.dart
+  screens/map_screen.dart       # peta + kartu kontrol + popup updater
   widgets/map_source_sheet.dart
+  widgets/splash_overlay.dart   # splash animasi
+  widgets/update_gate.dart      # popup pembaruan
 
 android/app/src/main/kotlin/com/ajiputra/fake_gps/
-  MainActivity.kt               # izin, gate AppOps, probe, start/stop
+  MainActivity.kt               # izin, gate AppOps, probe, start/stop, bridge updater
   MockLocationService.kt        # foreground service, test provider, auto-heal
+  FixSynthesizer.kt             # sintesis fix per-provider
+  WatchdogReceiver.kt           # exact alarm untuk membangunkan proses
+  DetectionSurface.kt           # audit permukaan deteksi
+  UpdateChecker.kt              # manifest, unduh, verifikasi SHA-256, installer
+  UpdateConfig.kt               # URL manifest
 ```
 
 ---
@@ -140,7 +153,7 @@ Urutan pemeriksaan yang dipakai aplikasi dispatch, dan statusnya:
 | pemeriksaan | bisa diakali tanpa root? | status |
 |---|---|---|
 | `Location.isMock` pada fix yang diterima | **tidak** — platform menandai ulang klon di proses lain | terdeteksi |
-| nama paket / label terhadap wordlist | ya | netral: id tanpa token *fake/mock/gps*, label "Telemetry Kit" |
+| nama paket / label terhadap wordlist | ya | netral: id tanpa token *fake/mock/gps*, label "SiteRoute" |
 | probe "ada app yang jadi mock provider" (`addTestProvider` → `SecurityException`) | tidak, selama app ini memegang slot | terdeteksi |
 | `Settings.Secure.ALLOW_MOCK_LOCATION` | hanya API < 23 | tidak berlaku |
 | korelasi server (cell-ID, BSSID, kecepatan, bentuk rute) | terjadi di backend operator | tidak tersentuh |
@@ -184,6 +197,25 @@ seluler, karena banyak aplikasi driver membandingkan fix dengan BSSID Wi-Fi di s
 
 ---
 
+## 7b. Pembaruan wajib
+
+App membaca `update.json` di `main` repo ini pada setiap cold start, setiap resume, dan
+setiap 15 menit selama terbuka. Kalau build terpasang lebih rendah dari yang diwajibkan,
+**popup** muncul di atas peta:
+
+- `force: true` — tidak ada tombol tutup, back tidak menembus, Start di bawah tidak bisa
+  ditekan sampai update terpasang.
+- `force: false` — ada tombol **Nanti** dan scrim bisa di-tap; tidak muncul lagi untuk
+  versi yang sama.
+- Manifest tidak terjangkau → popup tidak muncul (fail-open, supaya sinyal jelek tidak
+  mengunci app kerja).
+
+Panduan rilis lengkap: [`docs/UPDATE.md`](docs/UPDATE.md).
+
+Rilis terbaru: https://github.com/ajiputra001/SiteRute/releases
+
+---
+
 ## 8. Verifikasi
 
 ```bash
@@ -194,7 +226,7 @@ flutter test      # 12 test
 Uji manual:
 
 1. Pilih mock app + kecualikan optimasi baterai.
-2. Pilih titik → **Mulai mocking** → notifikasi muncul, chip jadi `Mocking · 3/3`.
+2. Pilih titik → **Mulai mocking** → notifikasi muncul, status jadi `Mocking · 3/3`.
 3. Buka Google Maps → titik biru ada di lokasi mock.
-4. **Diagnosa → Uji baca ulang** → semua provider `mock`, jarak < 80 m.
+4. Buka app peta lain → titik berada di koordinat mock, tidak melompat.
 5. **Stop** → posisi kembali ke GPS asli.

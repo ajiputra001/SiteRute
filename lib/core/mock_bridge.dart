@@ -198,7 +198,14 @@ class MockBridge {
     return MockStatus.fromMap(raw);
   }
 
-  /// Asks the platform what each provider currently reports. The honest check.
+  /// Asks the platform what each provider currently reports — the honest check.
+  ///
+  /// Deliberately unused by the UI: the diagnostics sheet was removed on request, and
+  /// the in-app probe row went with it. Kept as a live bridge because the native handler
+  /// is still the fastest way to confirm "is this provider actually reporting my
+  /// coordinate" from a Dart console or a future build without re-adding UI. If that
+  /// stops being true, delete this method *and* the `"probe"` case in MainActivity
+  /// together — leaving one half is how a channel silently drifts out of sync.
   static Future<ProbeResult> probe() async {
     final raw = await _invoke<Map<Object?, Object?>>('probe');
     if (raw == null) return ProbeResult.empty;
