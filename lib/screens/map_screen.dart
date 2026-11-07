@@ -46,6 +46,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   MockStatus _status = MockStatus.idle;
   final ValueNotifier<MockStatus> _statusVN = ValueNotifier<MockStatus>(MockStatus.idle);
+
+  /// Live camera bearing in degrees, normalised to -180…180.
+  ///
+  /// Held in a notifier rather than in `setState` state on purpose: a twist gesture
+  /// emits a position change on every frame, and rebuilding this screen each time would
+  /// repaint the map — the exact cost the `RepaintBoundary` around it exists to avoid.
+  /// Only the compass icon listens.
+  final ValueNotifier<double> _bearingVN = ValueNotifier<double>(0.0);
   String? _lastError;
   bool _starting = false;
   DateTime? _startedAt;
@@ -139,6 +147,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _poll?.cancel();
     _updateTimer?.cancel();
     _statusVN.dispose();
+    _bearingVN.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -166,6 +175,29 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     // frame behind the splash). Assigning `_target` alone does not move a live camera,
     // so the position is pushed explicitly once the real value is known.
     _recenterOnTarget();
+  }
+
+  /// Normalises a raw camera rotation to -180…180 and publishes it.
+  ///
+  /// The raw value is whatever the gesture maths produced — it can drift past ±360 over
+  /// a long session. [normalizeRotation] is the single definition of "canonical", shared
+  /// with the tests so the compass threshold and the reset path cannot disagree.
+  void _publishBearing(double raw) {
+    final deg = normalizeRotation(raw);
+    if (_bearingVN.value != deg) _bearingVN.value = deg;
+  }
+
+  /// Snaps the camera back to north-up. The compass button's whole job.
+  void _resetNorth() {
+    if (!_mapReady) return;
+    try {
+      // `rotate` takes degrees, not radians — the camera reports degrees too, so the
+      // compass and this call speak the same unit.
+      _map.rotate(0);
+      _publishBearing(0);
+    } catch (_) {
+      // Controller already disposed (shutdown race), nothing to reset.
+    }
   }
 
   /// Moves the camera to [_target] if the map is alive and not already there.
@@ -592,7 +624,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           if (_loaded) _buildMap() else const ColoredBox(color: Color(0xFF081014)),
           _buildSearchBar(),
           if (_searchResults.isNotEmpty) _buildSearchResults(),
-          Align(alignment: Alignment.bottomCenter, child: _buildCard()),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              // The compass sits above the card so a rotated map always has a visible way
+              // back to north. Growing the column upward (rather than overlaying) means
+              // the card keeps its exact position when the button appears.
+              children: [
+                _buildCompass(),
+                _buildCard(),
+              ],
+            ),
+          ),
           // Fades out once `_load()` finishes. Sits on top of everything, including a
           // half-built map, so the first painted frame is never a grey rectangle.
           if (!_splashGone)
@@ -645,10 +689,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             // If prefs resolved before the map did, the camera still sits on the
             // placeholder coordinate from construction — move it to the real target.
             _recenterOnTarget();
+            // Seed the compass from the camera rather than assuming zero: `onPositionChanged`
+            // only fires on a change, so a map that starts rotated would otherwise show no
+            // reset button until the operator happened to move it.
+            _publishBearing(_map.camera.rotation);
           },
           onTap: _onMapTap,
+          onPositionChanged: (camera, hasGesture) =>
+              _publishBearing(camera.rotation),
           interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+            // `all` includes `InteractiveFlag.rotate`; the map was previously pinned to
+            // `all & ~rotate`, which is why a two-finger twist did nothing at all.
+            flags: InteractiveFlag.all,
+            // Without the gesture race, rotate, pan and zoom all act at once and the
+            // twist fights the drag. With it, exactly one gesture wins per movement.
+            enableMultiFingerGestureRace: true,
+            // Library default is 20°, which needs a near-quarter turn before anything
+            // happens on a phone. 15° is still clearly deliberate, but reachable.
+            rotationThreshold: 15.0,
           ),
         ),
         children: [
@@ -800,6 +858,55 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
+    );
+  }
+
+  /// "Back to north" control. Renders nothing at all while the map is upright.
+  ///
+  /// A twirling needle would need the sign of `MapCamera.rotation` mapped correctly to
+  /// screen space to avoid pointing the wrong way; a fixed arrow that only resets is
+  /// unambiguous and cannot lie. It appears the moment the camera leaves north and
+  /// disappears when it returns, so it never takes space it does not need.
+  Widget _buildCompass() {
+    return ValueListenableBuilder<double>(
+      valueListenable: _bearingVN,
+      builder: (context, bearing, _) {
+        if (bearing.abs() < 0.5) return const SizedBox.shrink();
+        final scheme = Theme.of(context).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.only(right: 24, bottom: 10),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Tooltip(
+              message: 'Putar ke utara',
+              child: Material(
+                color: scheme.surface,
+                elevation: 6,
+                shadowColor: Colors.black54,
+                shape: CircleBorder(
+                  side: BorderSide(
+                    color: scheme.outlineVariant.withOpacity(0.4),
+                  ),
+                ),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _resetNorth,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    // `navigation` is a solid arrow pointing up: north-up, north.
+                    child: Icon(
+                      Icons.navigation,
+                      size: 20,
+                      color: scheme.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1021,7 +1128,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       ),
     );
   }
-
 
   Widget _buildGateHint() {
     if (!_loaded) return const SizedBox.shrink();

@@ -57,4 +57,46 @@ void main() {
     expect(compassLabel(181), 'S');
     expect(compassLabel(359), 'N');
   });
+
+  // The map compass decides "is the map rotated" from this value alone, so the cases
+  // that matter are the wrap-arounds: a long twist produces raw angles like 350° or
+  // -370°, and without normalisation the button would show for a map that is
+  // effectively north-up.
+  group('normalizeRotation', () {
+    test('leaves values already in range untouched', () {
+      expect(normalizeRotation(0), 0);
+      expect(normalizeRotation(35), 35);
+      expect(normalizeRotation(-35), -35);
+      expect(normalizeRotation(180), 180);
+    });
+
+    test('wraps past a full turn', () {
+      expect(normalizeRotation(350), closeTo(-10, 1e-9));
+      expect(normalizeRotation(370), closeTo(10, 1e-9));
+      expect(normalizeRotation(720), 0);
+      // -370° is one full turn clockwise past -10°, so it folds back to -10°, not +10°.
+      // Getting the sign wrong here would make the compass claim "east of north" for a
+      // map rotated ten degrees west.
+      expect(normalizeRotation(-370), closeTo(-10, 1e-9));
+      expect(normalizeRotation(181), closeTo(-179, 1e-9));
+    });
+
+    test('snaps sub-degree noise flat so the button does not linger', () {
+      expect(normalizeRotation(0.4), 0);
+      expect(normalizeRotation(-0.4), 0);
+      expect(normalizeRotation(359.7), 0);
+      // Just past the threshold must survive, otherwise the compass can never appear.
+      expect(normalizeRotation(0.6), closeTo(0.6, 1e-9));
+    });
+
+    test('never returns a value the compass would read as rotated', () {
+      for (var raw = -2000.0; raw <= 2000.0; raw += 7.5) {
+        final n = normalizeRotation(raw);
+        expect(n, greaterThanOrEqualTo(-180));
+        expect(n, lessThanOrEqualTo(180));
+        // Anything snapped to zero must be inside the dead zone.
+        if (n == 0) expect(normalizeRotation(raw).abs(), lessThan(0.5));
+      }
+    });
+  });
 }

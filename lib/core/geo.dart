@@ -52,6 +52,26 @@ double pathLength(List<LatLng> points) {
   return total;
 }
 
+/// Camera rotation normalised to -180…180, with near-north snapped to exactly zero.
+///
+/// A twist gesture accumulates rotation without bound, so the raw camera value can read
+/// 350°, -370° or 720°. The compass needs one canonical form — "how far from north, and
+/// which way" — because visibility is tested as `abs() > 0.5`. Half a degree below zero
+/// is gesture rounding, not a rotation an operator would want to undo, so it snaps flat
+/// and the reset button disappears instead of lingering at 0.3°.
+///
+/// Distinct from `latlong2`'s `normalizeBearing`, which is imported through
+/// `package:latlong2/latlong.dart` and returns 0…360 for a compass bearing. This one
+/// keeps the sign (west of north is negative) and applies the dead zone; swapping them
+/// would make every western rotation read as +350 and keep the button up forever.
+double normalizeRotation(double degrees) {
+  var v = degrees % 360.0;
+  if (v > 180.0) v -= 360.0;
+  if (v < -180.0) v += 360.0;
+  if (v.abs() < 0.5) return 0.0;
+  return v;
+}
+
 String fmtCoord(double value) => value.toStringAsFixed(6);
 
 String fmtDistance(double meters) {
