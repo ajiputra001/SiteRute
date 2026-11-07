@@ -1,9 +1,9 @@
 {
-  "versionCode": 5,
-  "versionName": "1.2.2",
+  "versionCode": 6,
+  "versionName": "1.2.3",
   "apkUrl": "https://github.com/ajiputra001/SiteRute/releases/latest/download/SiteRoute.apk",
-  "sha256": "2ee3818728ddb94e380305f62693b4a7ecb4d656c0bd55c1188cfe291b9aa15b",
-  "notes": "",
+  "sha256": "c733f6490854d38064ef285d672f91ed13e7eecd9a49b01d30656cc5620a46bb",
+  "notes": "Peta kini bisa diputar dengan dua jari. Tombol kompas muncul saat peta tidak menghadap utara.",
   "force": false,
   "minVersionCode": 1
 }
