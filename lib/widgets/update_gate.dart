@@ -18,6 +18,7 @@ class UpdateGate extends StatefulWidget {
     super.key,
     required this.info,
     this.onDismiss,
+    this.onInstalled,
   });
 
   /// The manifest evaluation. `blocked` true means no dismiss control is rendered.
@@ -25,6 +26,10 @@ class UpdateGate extends StatefulWidget {
 
   /// Called when the operator dismisses a non-forced notice. Null on a forced update.
   final VoidCallback? onDismiss;
+
+  /// Called once the platform reports the install actually succeeded. The parent uses it
+  /// to drop the popup immediately instead of waiting for the next 15-minute poll.
+  final VoidCallback? onInstalled;
 
   @override
   State<UpdateGate> createState() => _UpdateGateState();
@@ -36,6 +41,10 @@ class _UpdateGateState extends State<UpdateGate> {
   _Phase _phase = _Phase.idle;
   String? _error;
   String? _apkPath;
+
+  /// Live label while installing — "Menunggu konfirmasi…" while the OS dialog is up, so
+  /// the operator can tell the difference between "working" and "nothing happened".
+  String? _stage;
   bool _canInstall = true;
 
   bool get _forced => widget.info.blocked;
@@ -53,6 +62,14 @@ class _UpdateGateState extends State<UpdateGate> {
   }
 
   Future<void> _start() async {
+    // A verified APK from a previous attempt is reused. Re-downloading 48 MB because the
+    // OS dialog was cancelled is exactly the friction that made this feel broken — the
+    // file is already on disk and its digest was checked when it arrived.
+    if (_phase == _Phase.failed && _apkPath != null) {
+      await _install();
+      return;
+    }
+
     // "Install unknown apps" is per-package on API 26+ and cannot be granted through a
     // permission dialog — only through this settings page. Checked before the download
     // so a 48 MB transfer is never wasted on an install that would be refused.
@@ -76,6 +93,7 @@ class _UpdateGateState extends State<UpdateGate> {
     setState(() {
       _phase = _Phase.downloading;
       _error = null;
+      _stage = null;
     });
 
     final result = await UpdateBridge.download();
@@ -98,24 +116,66 @@ class _UpdateGateState extends State<UpdateGate> {
   Future<void> _install() async {
     final path = _apkPath;
     if (path == null) return;
-    setState(() => _phase = _Phase.installing);
-    final launched = await UpdateBridge.install(path);
+
+    setState(() {
+      _phase = _Phase.installing;
+      _error = null;
+      _stage = 'Membuka pemasang…';
+    });
+
+    final started = await UpdateBridge.install(path);
     if (!mounted) return;
-    if (!launched) {
+    if (!started.ok) {
       setState(() {
         _phase = _Phase.failed;
-        _error = 'Pemasang tidak bisa dibuka.';
+        _error = started.error ?? 'Pemasang tidak bisa dibuka.';
       });
       return;
     }
-    // The installer takes over. This process is replaced on success; on cancel it resumes
-    // with the verified APK still on disk, so the button returns to "Pasang sekarang" —
-    // re-tapping installs at once without downloading again.
-    await Future<void>.delayed(const Duration(seconds: 3));
+
+    // The platform owns the flow from here: it shows its own confirmation, and the answer
+    // arrives asynchronously. Assuming success here is what made a refused install look
+    // like a dead button, so the verdict is polled instead.
+    final deadline = DateTime.now().add(const Duration(minutes: 2));
+    var announcedWait = false;
+
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+
+      final snap = await UpdateBridge.installStatus();
+      if (!mounted) return;
+
+      if (snap.status == InstallStatus.success) {
+        setState(() => _stage = 'Terpasang…');
+        widget.onInstalled?.call();
+        return;
+      }
+
+      if (snap.status == InstallStatus.pendingUserAction) {
+        // Normal: the OS is waiting for a tap on its own dialog. Keep waiting.
+        if (!announcedWait) {
+          announcedWait = true;
+          setState(() => _stage = 'Menunggu konfirmasi…');
+        }
+        continue;
+      }
+
+      if (snap.status >= InstallStatus.failure) {
+        setState(() {
+          _phase = _Phase.failed;
+          _error = snap.message ?? 'Pemasangan gagal.';
+        });
+        return;
+      }
+      // InstallStatus.none — session committed, broadcast not delivered yet. Keep waiting.
+    }
+
     if (!mounted) return;
     setState(() {
       _phase = _Phase.ready;
-      _error = null;
+      _error = 'Pemasangan belum selesai. Ketuk "Pasang sekarang" untuk mencoba lagi '
+          '— berkasnya sudah terunduh.';
     });
   }
 
@@ -235,6 +295,21 @@ class _UpdateGateState extends State<UpdateGate> {
             ],
             const SizedBox(height: 20),
             _action(context, scheme),
+            if (_phase == _Phase.ready || _phase == _Phase.installing) ...[
+              const SizedBox(height: 10),
+              // The OS shows its own confirmation screen, and Play Protect may scan the
+              // APK before it installs. Saying so up front is what stops the operator
+              // from backing out of that dialog and reporting "the button does nothing".
+              Text(
+                'Konfirmasi pemasangan muncul dari sistem. Jika Google Play Protect '
+                'tampil, pilih "Instal".',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.45),
+                      height: 1.4,
+                    ),
+              ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -304,7 +379,7 @@ class _UpdateGateState extends State<UpdateGate> {
       _Phase.idle => _canInstall ? 'Unduh pembaruan' : 'Izinkan pemasangan',
       _Phase.downloading => 'Mengunduh…',
       _Phase.ready => 'Pasang sekarang',
-      _Phase.installing => 'Membuka pemasang…',
+      _Phase.installing => _stage ?? 'Membuka pemasang…',
       _Phase.failed => 'Coba lagi',
     };
 

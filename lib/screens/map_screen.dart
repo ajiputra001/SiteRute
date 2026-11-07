@@ -117,18 +117,34 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   ///              periodic poll does not nag the operator every 15 minutes.
   ///  * none    — hide, unless a forced notice is currently on screen from an older
   ///              verdict that has since been withdrawn.
-  Future<void> _checkUpdate() async {
+  Future<void> _checkUpdate({bool allowRetry = true}) async {
     if (!updatesSupported) return;
     final info = await UpdateBridge.check();
     if (!mounted) return;
 
-    // A manifest that could not be reached carries no information. Leave whatever is on
+    // A manifest that could not be reached carries no information — leave whatever is on
     // screen alone rather than collapsing a forced gate because of a bad signal.
-    if (!info.reachable) return;
+    //
+    // But retry once, because the observed cold-start failure was silence, not a bad
+    // network: the very first probe sometimes never left the process, and without a retry
+    // the app would sit on a stale verdict until the 15-minute poll or the next resume.
+    if (!info.reachable) {
+      if (allowRetry) {
+        await Future<void>.delayed(const Duration(seconds: 4));
+        if (mounted) await _checkUpdate(allowRetry: false);
+      }
+      return;
+    }
 
     final latest = info.latestCode ?? 0;
+    // Visibility is a pure function of the manifest and the operator's dismissal.
+    //
+    // An earlier version also required `!_updateVisible` here, which inverted on itself:
+    // while the popup was on screen every re-check computed "should be hidden" and closed
+    // it — including the resume that follows the installer. That is why the popup kept
+    // vanishing and coming back instead of staying put until it was dealt with.
     final shouldShow = info.blocked ||
-        (info.updateAvailable && latest != _dismissedCode && !_updateVisible);
+        (info.updateAvailable && latest != _dismissedCode);
 
     final changed = shouldShow != _updateVisible ||
         info.blocked != (_updateInfo?.blocked ?? false) ||
@@ -660,6 +676,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         // not re-open the same notice the operator already closed.
                         _dismissedCode = _updateInfo!.latestCode;
                       }),
+              // The platform confirmed the install. Drop the popup now rather than waiting
+              // for the next poll — this is what stops "the popup keeps coming back" when
+              // the process survives the update instead of being replaced.
+              onInstalled: () {
+                if (!mounted) return;
+                setState(() {
+                  _updateVisible = false;
+                  _updateInfo = null;
+                });
+                _checkUpdate();
+              },
             ),
         ],
       ),

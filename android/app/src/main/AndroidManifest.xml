@@ -79,6 +79,14 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Result callback for the self-update install session. Not exported: the only
+             sender is the platform, through an explicit PendingIntent created by this
+             app, so no other process can spoof an install status. -->
+        <receiver
+            android:name="com.ajiputra.fake_gps.InstallReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

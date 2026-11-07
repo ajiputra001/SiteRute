@@ -49,8 +49,23 @@ class UpdateInfo {
       );
 }
 
-/// Thin bridge over the native updater. The heavy work — HTTP, hashing, the installer
-/// intent — stays in Kotlin; this class only marshals arguments.
+/// Mirrors `PackageInstaller.STATUS_*`. Values confirmed against android-34's
+/// `android.jar`, not assumed: `STATUS_SUCCESS` is **0**, and `STATUS_PENDING_USER_ACTION`
+/// is **-1**, so treating "no status yet" as 0 would report every session as installed.
+class InstallStatus {
+  const InstallStatus._();
+
+  /// Native sentinel `Int.MIN_VALUE` — no attempt has run yet.
+  static const int none = -2147483648;
+  static const int pendingUserAction = -1;
+  static const int success = 0;
+
+  /// Lowest failure code (`STATUS_FAILURE`); everything above it is also a failure.
+  static const int failure = 1;
+}
+
+/// Thin bridge over the native updater. The heavy work — HTTP, hashing, the install
+/// session — stays in Kotlin; this class only marshals arguments.
 class UpdateBridge {
   static const MethodChannel _ch =
       MethodChannel('com.ajiputra.fake_gps/control');
@@ -88,13 +103,35 @@ class UpdateBridge {
     }
   }
 
-  /// Launches PackageInstaller for a previously downloaded APK.
-  static Future<bool> install(String path) async {
+  /// Starts the install session. Returns as soon as the platform owns the flow — the
+  /// outcome is not known yet, so it must be read with [installStatus].
+  static Future<({bool ok, String? error})> install(String path) async {
     try {
-      return await _ch.invokeMethod<bool>('installUpdate', {'path': path}) ??
-          false;
+      final r = await _ch.invokeMethod<Map<Object?, Object?>>(
+        'installUpdate',
+        {'path': path},
+      );
+      if (r == null) return (ok: false, error: 'Respons kosong.');
+      return (ok: r['ok'] as bool? ?? false, error: r['error']?.toString());
+    } on PlatformException catch (e) {
+      return (ok: false, error: e.message ?? 'Pemasangan gagal dimulai.');
+    } catch (e) {
+      return (ok: false, error: '$e');
+    }
+  }
+
+  /// The platform's verdict on the last session. [InstallStatus.none] means the broadcast
+  /// has not arrived yet — distinct from a failure.
+  static Future<({int status, String? message})> installStatus() async {
+    try {
+      final r = await _ch.invokeMethod<Map<Object?, Object?>>('installStatus');
+      if (r == null) return (status: InstallStatus.none, message: null);
+      return (
+        status: (r['status'] as num?)?.toInt() ?? InstallStatus.none,
+        message: r['message']?.toString(),
+      );
     } catch (_) {
-      return false;
+      return (status: InstallStatus.none, message: null);
     }
   }
 

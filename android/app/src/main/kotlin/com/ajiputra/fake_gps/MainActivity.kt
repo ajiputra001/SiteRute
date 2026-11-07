@@ -81,6 +81,15 @@ class MainActivity : FlutterActivity() {
                         val path = call.argument<String>("path").orEmpty()
                         result.success(UpdateChecker.install(this, path))
                     }
+                    // Polled by Dart while the platform's confirmation is on screen. This
+                    // is how "install failed because Play Protect blocked it" reaches the
+                    // operator instead of looking like a dead button.
+                    "installStatus" -> result.success(
+                        mapOf(
+                            "status" to UpdateChecker.lastInstallStatus,
+                            "message" to UpdateChecker.lastInstallMessage,
+                        )
+                    )
                     "canInstallPackages" -> result.success(UpdateChecker.canInstall(this))
                     "openInstallSettings" -> result.success(UpdateChecker.openInstallSettings(this))
                     "start" -> startMocking(call.arguments as? Map<*, *> ?: emptyMap<String, Any>(), result)

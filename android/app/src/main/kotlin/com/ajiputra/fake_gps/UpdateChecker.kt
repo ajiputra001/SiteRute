@@ -1,7 +1,9 @@
 package com.ajiputra.fake_gps
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -296,82 +298,102 @@ object UpdateChecker {
     }
 
     /**
-     * Hands the downloaded APK to PackageInstaller.
+     * Installs the downloaded APK through a [PackageInstaller] session.
      *
-     * `-r` semantics are implicit: installing a build with the same package name and same
-     * signing certificate replaces the existing one in place and preserves app data
-     * (saved spots, preferences). A different certificate is refused by the platform —
-     * that is the reason the release build must not keep using the debug key once the
-     * app is distributed (see `android/key.properties`).
+     * The previous implementation launched an `ACTION_VIEW` intent at the APK's MIME
+     * type. On this device that resolved to `ResolverActivity` — the "open with" chooser
+     * offering File Manager, Termux and WPS Office — so the operator got a picker instead
+     * of an install, tapped the update button again, and the popup reappeared with the
+     * version unchanged. Addressing the installer component directly was supposed to
+     * avoid that and did not survive this ROM's resolver.
      *
-     * The intent is aimed at the system installer component rather than left as a bare
-     * `ACTION_VIEW`, because any file explorer or archiver registered for the MIME type
-     * turns the install into an app-chooser dialog. Those apps cannot install anyway —
-     * they only confuse the one screen that must be single-purpose.
+     * A session is the correct mechanism: no chooser, and the platform reports what
+     * actually happened through [InstallReceiver] — cancelled, blocked by Play Protect,
+     * signature conflict — instead of failing silently.
+     *
+     * Returns immediately. The outcome is asynchronous; read [lastInstallStatus] and
+     * [lastInstallMessage] afterwards.
      */
-    fun install(context: Context, path: String): Boolean {
+    fun install(context: Context, path: String): Map<String, Any?> {
+        lastInstallStatus = STATUS_NONE
+        lastInstallMessage = null
+        lastSessionId = -1
+
+        val file = File(path)
+        if (!file.exists()) {
+            return mapOf("ok" to false, "error" to "Berkas APK tidak ditemukan.")
+        }
+
         return try {
-            val file = File(path)
-            if (!file.exists()) return false
-            val uri = uriFor(context, file)
-
-            // Preferred: the platform package installer, addressed by component so no
-            // chooser appears. `com.android.packageinstaller` is AOSP; `com.google.android
-            // .packageinstaller` is the Play variant used on most OEM builds.
-            val installers = listOf(
-                "com.google.android.packageinstaller" to
-                    "com.android.packageinstaller.PackageInstallerActivity",
-                "com.android.packageinstaller" to
-                    "com.android.packageinstaller.PackageInstallerActivity",
-            )
-            for ((pkg, cls) in installers) {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, APK_MIME)
-                    setClassName(pkg, cls)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                val resolved = context.packageManager.resolveActivity(intent, 0)
-                if (resolved == null) continue
-
-                // `FLAG_GRANT_READ_URI_PERMISSION` only works when the receiving package
-                // is identifiable. Granting it explicitly to the resolved package is what
-                // makes the file readable to PackageInstaller — without this the activity
-                // launches and immediately fails to open the stream, which looks like the
-                // installer silently closing.
-                try {
-                    context.grantUriPermission(
-                        resolved.activityInfo.packageName,
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
-                } catch (_: Throwable) {
-                    // Continue: the intent flag may still cover it on less-restrictive ROMs.
-                }
-
-                try {
-                    context.startActivity(intent)
-                    return true
-                } catch (_: Throwable) {
-                    // Fall through to the next candidate.
-                }
+            val installer = context.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL,
+            ).apply {
+                // The size hint lets the platform fail early on a full disk instead of
+                // midway through the copy, which is the difference between a clear
+                // "storage" error and an unexplained abort.
+                setSize(file.length())
             }
 
-            // Fallback: anything that can open an APK. Shows a chooser on ROMs without a
-            // resolvable installer component, but still completes the install.
-            val fallback = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, APK_MIME)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val sessionId = installer.createSession(params)
+            lastSessionId = sessionId
+
+            installer.openSession(sessionId).use { session ->
+                session.openWrite("base.apk", 0, file.length()).use { out ->
+                    file.inputStream().use { input -> input.copyTo(out, 64 * 1024) }
+                    session.fsync(out)
+                }
+
+                val callback = PendingIntent.getBroadcast(
+                    context,
+                    sessionId,
+                    Intent(context, InstallReceiver::class.java)
+                        .putExtra(InstallReceiver.EXTRA_SESSION_ID, sessionId),
+                    PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag(),
+                )
+                session.commit(callback.intentSender)
             }
-            context.startActivity(fallback)
-            true
-        } catch (_: Throwable) {
-            false
+
+            mapOf("ok" to true, "sessionId" to sessionId)
+        } catch (t: Throwable) {
+            // Abandon a half-written session so it does not linger in the installer queue.
+            runCatching {
+                if (lastSessionId >= 0) {
+                    context.packageManager.packageInstaller.abandonSession(lastSessionId)
+                }
+            }
+            mapOf("ok" to false, "error" to (t.message ?: "Sesi pemasangan gagal dibuat."))
         }
     }
 
-    private const val APK_MIME = "application/vnd.android.package-archive"
+    /**
+     * Not a real `PackageInstaller` code; sits outside its -1…8 range. Used as the
+     * "no attempt yet" sentinel — `0` would be read as `STATUS_SUCCESS`.
+     *
+     * Declared before [lastInstallStatus] because object property initialisers run in
+     * source order and cannot see a constant declared further down.
+     */
+    const val STATUS_NONE: Int = Int.MIN_VALUE
+
+    /**
+     * Status of the last install attempt, mirroring `PackageInstaller.STATUS_*`.
+     */
+    @Volatile
+    var lastInstallStatus: Int = STATUS_NONE
+
+    @Volatile
+    var lastInstallMessage: String? = null
+
+    @Volatile
+    var lastSessionId: Int = -1
+
+    /** API 31+ requires an explicit mutability flag on a PendingIntent the system fills in. */
+    private fun mutableFlag(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_MUTABLE
+        } else {
+            0
+        }
 
     // ---------------------------------------------------------------- helpers
 
