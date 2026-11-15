@@ -41,6 +41,8 @@ object UpdateChecker {
         val notes: String?,
         val force: Boolean,
         val minVersionCode: Int,
+        /** Optional in-app promo, supplied remotely so copy and contact can change freely. */
+        val promo: Promo? = null,
     ) {
         fun toMap(): Map<String, Any?> = mapOf(
             "versionCode" to versionCode,
@@ -50,6 +52,28 @@ object UpdateChecker {
             "notes" to notes,
             "force" to force,
             "minVersionCode" to minVersionCode,
+            "promo" to promo?.toMap(),
+        )
+    }
+
+    /** A promo card the app can render without a rebuild. */
+    data class Promo(
+        val id: String,
+        val enabled: Boolean,
+        val title: String,
+        val tagline: String,
+        val body: String,
+        val cta: String,
+        val url: String,
+    ) {
+        fun toMap(): Map<String, Any?> = mapOf(
+            "id" to id,
+            "enabled" to enabled,
+            "title" to title,
+            "tagline" to tagline,
+            "body" to body,
+            "cta" to cta,
+            "url" to url,
         )
     }
 
@@ -126,10 +150,59 @@ object UpdateChecker {
                 // must not keep running. An explicit `false` is the opt-out.
                 force = body.optBoolean("force", true),
                 minVersionCode = body.optInt("minVersionCode", code),
+                promo = parsePromo(body.optJSONObject("promo")),
             )
         }
     } catch (_: Throwable) {
         null
+    }
+
+    /**
+     * Parses the optional `promo` block.
+     *
+     * Returns null when the block is absent, disabled, or has no usable contact link —
+     * all three mean the same thing to the UI: nothing to show. `wa` is accepted as a
+     * convenience so the operator can paste a number instead of hand-building a URL.
+     */
+    private fun parsePromo(o: JSONObject?): Promo? {
+        if (o == null) return null
+        if (!o.optBoolean("enabled", true)) return null
+
+        val url = o.optString("url", "").takeIf { it.isNotBlank() }
+            ?: PromoConfig.waUrl(o.optString("wa", ""))
+            ?: return null
+
+        val id = o.optString("id", "").takeIf { it.isNotBlank() }
+            ?: return null
+
+        return Promo(
+            id = id,
+            enabled = true,
+            title = o.optString("title", PromoConfig.TITLE),
+            tagline = o.optString("tagline", PromoConfig.TAGLINE),
+            body = o.optString("body", PromoConfig.BODY),
+            cta = o.optString("cta", PromoConfig.CTA),
+            url = url,
+        )
+    }
+
+    /**
+     * The built-in promo, used when the manifest carries none.
+     *
+     * Returns null while [PromoConfig.CONTACT_WA] is blank — see that constant for why a
+     * promo without a working contact is worse than no promo.
+     */
+    fun localPromo(): Promo? {
+        val url = PromoConfig.waUrl(PromoConfig.CONTACT_WA) ?: return null
+        return Promo(
+            id = PromoConfig.ID,
+            enabled = true,
+            title = PromoConfig.TITLE,
+            tagline = PromoConfig.TAGLINE,
+            body = PromoConfig.BODY,
+            cta = PromoConfig.CTA,
+            url = url,
+        )
     }
 
     private fun cache(context: Context, raw: String) {

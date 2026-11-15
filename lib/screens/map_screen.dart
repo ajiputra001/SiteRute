@@ -12,9 +12,11 @@ import '../models/map_source.dart';
 import '../models/mock_request.dart';
 import '../models/spot.dart';
 import '../services/geocoder.dart';
+import '../services/promo_store.dart';
 import '../services/settings_store.dart';
 import '../services/spot_store.dart';
 import '../widgets/map_source_sheet.dart';
+import '../widgets/promo_sheet.dart';
 import '../widgets/splash_overlay.dart';
 import '../widgets/update_gate.dart';
 
@@ -67,6 +69,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   /// Latest manifest verdict. Null until the first probe returns; a null here reads as
   /// "no update", so a dead network never shows a popup.
   UpdateInfo? _updateInfo;
+
+  /// Promo from the manifest (or the built-in fallback). Null means "show nothing".
+  PromoInfo? _promo;
+
+  /// Id of the promo the operator closed. Stored by id, not as a flag, so a new campaign
+  /// reappears while the dismissed one stays dismissed.
+  String? _dismissedPromoId;
 
   /// Whether the popup is on screen. Separate from `_updateInfo` because a soft notice
   /// can be dismissed without losing the knowledge that an update exists — the periodic
@@ -122,6 +131,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final info = await UpdateBridge.check();
     if (!mounted) return;
 
+    // The promo rides along with the same reply and stays meaningful even when the
+    // version check failed, so it is captured before the reachable guard below.
+    if (info.promo?.id != _promo?.id) {
+      setState(() => _promo = info.promo);
+    }
+
     // A manifest that could not be reached carries no information — leave whatever is on
     // screen alone rather than collapsing a forced gate because of a bad signal.
     //
@@ -174,6 +189,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final settings = await AppSettings.load();
     final spots = await SpotStore.load();
     final status = await MockBridge.status();
+    final dismissedPromo = await PromoStore.dismissedId();
 
     if (!mounted) return;
     _statusVN.value = status;
@@ -185,6 +201,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _spots = spots;
       _status = status;
       _running = status.running;
+      _dismissedPromoId = dismissedPromo;
       _loaded = true;
     });
     // The map may already exist by the time prefs resolve (it is built on the first
@@ -937,6 +954,107 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Compact promo strip under the Start button.
+  ///
+  /// Placed after the primary action on purpose: the Start button must not move when a
+  /// campaign is running, and a driver who is mid-shift should never have to scroll past
+  /// an ad to reach it. Rendered as a single 46 px row, not a second card.
+  Widget _buildPromoRow() {
+    final promo = _promo;
+    if (promo == null || _dismissedPromoId == promo.id) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withOpacity(0.45),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: scheme.outlineVariant.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: _openPromo,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(9, 8, 4, 8),
+                  child: Row(
+                    children: [
+                      PromoBadge(scheme: scheme, size: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              promo.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12.5,
+                                letterSpacing: -0.1,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              promo.tagline,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                fontSize: 10.5,
+                                color: scheme.onSurface.withOpacity(0.55),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: scheme.onSurface.withOpacity(0.35),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Separate target from the row: closing must never open the sheet.
+            IconButton(
+              tooltip: 'Sembunyikan promosi',
+              onPressed: _dismissPromo,
+              icon: const Icon(Icons.close, size: 15),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openPromo() {
+    final promo = _promo;
+    if (promo == null) return;
+    showPromoSheet(context, promo);
+  }
+
+  Future<void> _dismissPromo() async {
+    final promo = _promo;
+    if (promo == null) return;
+    setState(() => _dismissedPromoId = promo.id);
+    await PromoStore.dismiss(promo.id);
+  }
+
   Widget _buildCard() {
     final theme = Theme.of(context);
 
@@ -963,6 +1081,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             const SizedBox(height: 12),
             _buildGateHint(),
             _buildPrimaryButton(),
+            _buildPromoRow(),
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,

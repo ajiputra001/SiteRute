@@ -59,6 +59,10 @@ class MainActivity : FlutterActivity() {
                     "openDeveloperSettings" -> result.success(openDeveloperSettings())
                     "openAppDetails" -> result.success(openAppDetails())
                     "openBatterySettings" -> result.success(openBatterySettings())
+                    // Promo CTA. The URL can come from the remote manifest, so it is
+                    // restricted to http(s) here — a remote string must never be able to
+                    // launch a file:// or an arbitrary component.
+                    "openUrl" -> result.success(openUrl(call.argument<String>("url").orEmpty()))
                     "openExactAlarmSettings" -> result.success(openExactAlarmSettings())
                     "realLocation" -> locateOnce(result)
                     "probe" -> result.success(probe())
@@ -349,6 +353,32 @@ class MainActivity : FlutterActivity() {
         false
     }
 
+    /**
+     * Opens an external link — the promo's WhatsApp CTA.
+     *
+     * Scheme is allow-listed because this string may arrive from the remote manifest: an
+     * unrestricted `ACTION_VIEW` on remote input could be pointed at `file://` or at any
+     * exported component on the device.
+     */
+    private fun openUrl(raw: String): Boolean {
+        if (raw.isBlank()) return false
+        val uri = try {
+            Uri.parse(raw)
+        } catch (_: Throwable) {
+            return false
+        }
+        if (uri.scheme?.lowercase() !in setOf("https", "http")) return false
+        return try {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            true
+        } catch (_: Throwable) {
+            // No browser and no WhatsApp — nothing can handle it.
+            false
+        }
+    }
+
     private fun openBatterySettings(): Boolean {
         // Verified on CPH1911 with `dumpsys package com.android.settings`: ColorOS *does*
         // implement the per-app ignore dialog, but only behind the data URI filter —
@@ -577,6 +607,10 @@ class MainActivity : FlutterActivity() {
             val installedCode = (installed["versionCode"] as? Number)?.toInt() ?: 0
 
             val manifest = UpdateChecker.effectiveManifest(this)
+            // The promo is independent of version state: it must still render when the
+            // manifest is unreachable, so the built-in copy is the fallback on both
+            // branches rather than only on success.
+            val promo = manifest?.promo ?: UpdateChecker.localPromo()
             val reply = if (manifest == null) {
                 // Fail open: no manifest reachable means "cannot confirm staleness",
                 // which is not the same as "stale". See UpdateChecker's header note.
@@ -586,6 +620,7 @@ class MainActivity : FlutterActivity() {
                     "installedName" to installed["versionName"],
                     "updateAvailable" to false,
                     "blocked" to false,
+                    "promo" to promo?.toMap(),
                 )
             } else {
                 val belowFloor = installedCode < manifest.minVersionCode
@@ -602,6 +637,7 @@ class MainActivity : FlutterActivity() {
                     // update exists. A non-forced newer build only nudges.
                     "blocked" to (belowFloor || (newer && manifest.force)),
                     "manifest" to manifest.toMap(),
+                    "promo" to promo?.toMap(),
                 )
             }
 

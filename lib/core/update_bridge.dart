@@ -2,6 +2,44 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+/// A promo card supplied by the manifest (or the app's built-in fallback).
+///
+/// Null whenever there is nothing worth showing — disabled, missing, or without a usable
+/// contact link. The UI treats null as "render nothing", so a broken remote entry cannot
+/// leave an empty shell in the card.
+class PromoInfo {
+  const PromoInfo({
+    required this.id,
+    required this.title,
+    required this.tagline,
+    required this.body,
+    required this.cta,
+    required this.url,
+  });
+
+  final String id;
+  final String title;
+  final String tagline;
+  final String body;
+  final String cta;
+  final String url;
+
+  static PromoInfo? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final id = raw['id']?.toString() ?? '';
+    final url = raw['url']?.toString() ?? '';
+    if (id.isEmpty || url.isEmpty) return null;
+    return PromoInfo(
+      id: id,
+      title: raw['title']?.toString() ?? '',
+      tagline: raw['tagline']?.toString() ?? '',
+      body: raw['body']?.toString() ?? '',
+      cta: raw['cta']?.toString() ?? 'Hubungi admin',
+      url: url,
+    );
+  }
+}
+
 /// A manifest as described by the release server, plus the local install it is compared
 /// against. Everything here is what the force-update gate needs and nothing more.
 class UpdateInfo {
@@ -14,6 +52,7 @@ class UpdateInfo {
     this.notes,
     this.updateAvailable = false,
     this.blocked = false,
+    this.promo,
   });
 
   /// Whether the manifest could be fetched at all. A false value is *not* an update.
@@ -31,6 +70,9 @@ class UpdateInfo {
   /// The app must refuse to be used until the update is installed.
   final bool blocked;
 
+  /// In-app promo, independent of version state.
+  final PromoInfo? promo;
+
   static const UpdateInfo unknown = UpdateInfo(
     reachable: false,
     installedCode: 0,
@@ -46,6 +88,7 @@ class UpdateInfo {
         notes: m['notes']?.toString(),
         updateAvailable: m['updateAvailable'] as bool? ?? false,
         blocked: m['blocked'] as bool? ?? false,
+        promo: PromoInfo.fromMap(m['promo']),
       );
 }
 
@@ -146,6 +189,15 @@ class UpdateBridge {
   static Future<bool> openInstallSettings() async {
     try {
       return await _ch.invokeMethod<bool>('openInstallSettings') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens the promo's contact link. Scheme is allow-listed natively.
+  static Future<bool> openUrl(String url) async {
+    try {
+      return await _ch.invokeMethod<bool>('openUrl', {'url': url}) ?? false;
     } catch (_) {
       return false;
     }
