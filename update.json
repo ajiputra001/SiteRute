@@ -1,9 +1,18 @@
 {
-  "versionCode": 10,
-  "versionName": "1.2.7",
+  "versionCode": 11,
+  "versionName": "1.2.8",
   "apkUrl": "https://github.com/ajiputra001/SiteRute/releases/latest/download/SiteRoute.apk",
-  "sha256": "4e2a17193f464c7009078b0fd1fd81f9e99a75a8ccceb30e991e0c8d9bb78d8a",
-  "notes": "Perbaikan pembaruan: pemasangan kini lewat sistem tanpa dialog pilih-aplikasi, dan kegagalan dijelaskan.",
+  "sha256": "635398c8700633046593695f6c1b85266a1590a86570529cb91b0c9dbb4f1ea8",
+  "notes": "Promosi AUTO PETRIP di dalam aplikasi.",
   "force": false,
-  "minVersionCode": 1
+  "minVersionCode": 1,
+  "promo": {
+    "id": "petrip-v1",
+    "enabled": false,
+    "title": "AUTO PETRIP",
+    "tagline": "Isi petrip harian otomatis",
+    "body": "Setiap hari driver harus mengisi petrip secara manual. AUTO PETRIP mengisi petrip harian otomatis, jadi tidak perlu isi form satu per satu. Hubungi admin kalau berminat.",
+    "cta": "Hubungi admin",
+    "wa": ""
+  }
 }
