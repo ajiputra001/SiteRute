@@ -1,11 +1,11 @@
 {
-  "versionCode": 14,
-  "versionName": "1.3.1",
+  "versionCode": 15,
+  "versionName": "1.3.2",
   "apkUrl": "https://github.com/ajiputra001/SiteRute/releases/latest/download/SiteRoute.apk",
-  "sha256": "bb5aad4926a20da8a316dbea026a5ea405bf68e4946b511448c43cebf4d49b16",
-  "notes": "Promosi AUTO PETRIP: pesan chat sudah terisi otomatis.",
-  "force": false,
-  "minVersionCode": 1,
+  "sha256": "166726953bc63c928a4401347550acbc06968981db217c5c539adfe7e0b4896d",
+  "notes": "Pembaruan wajib: semua rilis mulai sekarang harus dipasang sebelum aplikasi bisa dipakai.",
+  "force": true,
+  "minVersionCode": 15,
   "promo": {
     "id": "petrip-v2",
     "enabled": true,

@@ -59,11 +59,35 @@ app jalan daripada brick karena salah ketik URL.
 blocked = (installedCode < minVersionCode) OR (versionCode > installedCode AND force)
 ```
 
-Jadi:
+## Kebijakan rilis: SEMUA pembaruan wajib
 
-- Naikkan `versionCode` + `force: true` → semua orang wajib update.
-- Naikkan `minVersionCode` saja → build lama di bawah batas itu terkunci, build lain hanya ditawari.
-- `force: false` → tidak ada yang dipaksa, hanya muncul info.
+Sejak v1.3.2 setiap rilis **wajib** dipasang. Tidak ada tombol "Nanti", tidak ada cara
+menundanya. Ini dijaga dua lapis supaya tidak bergantung pada ingatan saat merilis:
+
+| Lapis | Nilai | Akibat |
+|---|---|---|
+| `force` | `true` | Build lebih baru langsung memblokir UI |
+| `minVersionCode` | **sama dengan `versionCode`** | Build apa pun di bawahnya terkunci, bahkan bila `force` lupa diisi |
+
+`force` **default `true` di dalam aplikasi** bila field itu dihilangkan dari JSON, jadi
+lupa menuliskan `force` tetap menghasilkan pembaruan wajib.
+
+Artinya urutan rilis selalu:
+
+1. Naikkan `versionCode` di `pubspec.yaml` (`version: X.Y.Z+N`).
+2. Build, hitung `sha256`.
+3. Di `update.json`: `versionCode` = N, `versionName` = X.Y.Z, **`force: true`**,
+   **`minVersionCode` = N**.
+4. Publish release + upload APK.
+
+Jangan pernah menurunkan `minVersionCode`, karena itu membuka lagi build lama.
+
+### Kalau suatu rilis bermasalah
+
+`force` sengaja tidak dihapus dari kode: satu-satunya jalan keluar darurat adalah
+merilis versi yang lebih tinggi dan menurunkan `minVersionCode`, bukan mematikan paksaan
+pada rilis yang rusak. Build yang sudah terlanjur diblokir tidak bisa "dibebaskan" dari
+jarak jauh — jadi uji dulu sebelum publish.
 
 ### Hitung sha256
 
