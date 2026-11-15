@@ -7,6 +7,7 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
@@ -98,23 +99,51 @@ object UpdateChecker {
      * string is ignored by the server but makes the CDN treat each minute as a new object.
      */
     fun fetchManifest(context: Context): Manifest? {
-        val busted = UpdateConfig.MANIFEST_URL + manifestCacheBuster()
-        val raw = try {
-            httpGet(busted)
-        } catch (_: Throwable) {
-            // A cache-busted URL can miss on a proxy that keyed on the plain path, so one
-            // retry at the bare URL is worth the extra round trip.
-            try {
-                httpGet(UpdateConfig.MANIFEST_URL)
-            } catch (_: Throwable) {
-                null
-            }
-        } ?: return null
+        val failures = StringBuilder()
 
-        val parsed = parse(raw) ?: return null
-        cache(context, raw)
-        return parsed
+        for (base in UpdateConfig.MANIFEST_MIRRORS) {
+            val busted = base + manifestCacheBuster()
+            val raw = try {
+                httpGet(busted)
+            } catch (t: Throwable) {
+                // Record and move on: one blocked host must not disable the channel.
+                failures.append(base.substringAfter("://").substringBefore("/"))
+                    .append("(").append(t.message ?: t.javaClass.simpleName).append(") ")
+                continue
+            }
+
+            val parsed = parse(raw)
+            if (parsed == null) {
+                failures.append(base.substringAfter("://").substringBefore("/"))
+                    .append("(parse) ")
+                continue
+            }
+
+            lastFetchMirror = base
+            lastFetchError = null
+            // One line per poll. Without it a working channel and a silently degrading
+            // fallback look identical from the outside, which is how the blocked primary
+            // host went unnoticed.
+            Log.i(TAG, "manifest served by ${base.substringAfter("://").substringBefore("/")}")
+            cache(context, raw)
+            return parsed
+        }
+
+        lastFetchError = failures.toString().trim().ifBlank { "no mirror answered" }
+        // Logged rather than thrown: this runs off the UI thread and the app must keep
+        // working, but a silent failure is what made the broken channel invisible for days.
+        Log.w(TAG, "manifest unreachable: $lastFetchError")
+        return null
     }
+
+    /** Which mirror served the last successful fetch — diagnostic only. */
+    @Volatile
+    var lastFetchMirror: String? = null
+
+    @Volatile
+    var lastFetchError: String? = null
+
+    private const val TAG = "UpdateChecker"
 
     /** Minute-granularity token; the CDN edge then keys on it. */
     private fun manifestCacheBuster(): String =

@@ -32,6 +32,23 @@ object UpdateConfig {
      */
     const val MANIFEST_URL: String = "https://raw.githubusercontent.com/ajiputra001/SiteRute/main/update.json"
 
+    /**
+     * Hosts tried in order until one answers.
+     *
+     * `raw.githubusercontent.com` is unreachable from some mobile networks — measured on
+     * the operator's device: map tiles loaded normally while the manifest fetch received
+     * zero bytes. A single hard-coded host therefore silently disables the entire update
+     * channel for those users, which is exactly what happened.
+     *
+     * Order is freshness-first: raw and Pages serve the branch directly, while jsDelivr is
+     * an edge cache that can lag by hours and is therefore last.
+     */
+    val MANIFEST_MIRRORS: List<String> = listOf(
+        MANIFEST_URL,
+        "https://ajiputra001.github.io/SiteRute/update.json",
+        "https://cdn.jsdelivr.net/gh/ajiputra001/SiteRute@main/update.json",
+    )
+
     /** How long a manifest response is trusted before it is fetched again. */
     const val CACHE_TTL_MS: Long = 10 * 60 * 1000L
 
