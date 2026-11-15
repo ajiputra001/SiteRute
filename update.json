@@ -8,11 +8,11 @@
   "minVersionCode": 1,
   "promo": {
     "id": "petrip-v1",
-    "enabled": false,
+    "enabled": true,
     "title": "AUTO PETRIP",
     "tagline": "Isi petrip harian otomatis",
     "body": "Setiap hari driver harus mengisi petrip secara manual. AUTO PETRIP mengisi petrip harian otomatis, jadi tidak perlu isi form satu per satu. Hubungi admin kalau berminat.",
     "cta": "Hubungi admin",
-    "wa": ""
+    "wa": "6281234567890"
   }
 }
