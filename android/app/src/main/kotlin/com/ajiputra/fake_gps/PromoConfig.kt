@@ -1,17 +1,15 @@
 package com.ajiputra.fake_gps
 
 /**
- * The in-app promo for AUTO PETRIP, and the one line the operator has to fill.
+ * The in-app promo for AUTO PETRIP, and its contact number.
  *
- * ## Filling the contact
+ * ## The contact
  *
- * Set [CONTACT_WA] to the admin's WhatsApp number, digits only, international form:
- * `"6281234567890"` — no `+`, no spaces, no leading zero. Rebuild once and the promo
- * appears inside SiteRoute.
- *
- * While [CONTACT_WA] is blank the promo stays hidden on purpose. A card whose button
- * opens nothing is worse than no card: it burns the one chance to convert a driver who
- * was interested, and it looks broken.
+ * [CONTACT_WA] holds the admin's WhatsApp number in the local `08…` form the operator
+ * uses. [waUrl] converts it to the `62…` form the link needs, so pasting either form
+ * works. Blank means the promo stays hidden on purpose: a card whose button opens
+ * nothing is worse than no card — it burns the one chance to convert an interested
+ * driver, and it looks broken.
  *
  * ## Changing it without a rebuild
  *
@@ -36,21 +34,40 @@ package com.ajiputra.fake_gps
 object PromoConfig {
 
     /**
-     * Admin WhatsApp number, digits only in international form.
+     * Admin WhatsApp number.
      *
-     * Empty by default: the promo is hidden until this is set. See the class comment.
+     * Stored in the local `08…` form the operator uses; [waUrl] converts it to the `62…`
+     * form the link needs. Either form is accepted.
      */
-    const val CONTACT_WA: String = ""
+    const val CONTACT_WA: String = "085641858425"
 
     // Local fallback copy, used when the manifest carries no promo block.
-    const val ID: String = "petrip-v1"
+    const val ID: String = "petrip-v2"
     const val TITLE: String = "AUTO PETRIP"
     const val TAGLINE: String = "Isi petrip harian otomatis"
-    const val BODY: String =
-        "Setiap hari driver harus mengisi petrip secara manual. AUTO PETRIP mengisi " +
-            "petrip harian otomatis, jadi tidak perlu isi form satu per satu. " +
-            "Hubungi admin kalau berminat."
     const val CTA: String = "Hubungi admin"
+
+    /**
+     * The campaign copy.
+     *
+     * Written for WhatsApp, where `*text*` renders as bold. The app renders those markers
+     * the same way instead of printing literal asterisks — see the promo sheet.
+     */
+    val BODY: String = """
+        Masih capek isi form petrip manual setiap hari? 😫
+
+        Sekarang tidak perlu lagi buang waktu buka dan input data satu per satu. Gunakan *AUTO PETRIP*, solusi otomatis untuk pengisian laporan petrip harian driver!
+
+        Keunggulan menggunakan *AUTO PETRIP*:
+        ✅ *Otomatis Setiap Hari* – Sistem memproses pengisian petrip secara otomatis tanpa perlu input manual berulang.
+        ✅ *Hemat Waktu & Tenaga* – Tidak perlu lagi repot mengisi form satu per satu setelah selesai narik.
+        ✅ *Anti Lupa & Tepat Waktu* – Laporan harian selalu tercatat rutin tanpa khawatir terlewat.
+        ✅ *Praktis & Terima Beres* – Sekali aktivasi, driver cukup fokus bekerja di jalan.
+
+        Tinggalkan cara lama yang ribet dan bikin urusan petrip harian jadi jauh lebih efisien.
+
+        Tertarik mengaktifkan *AUTO PETRIP* atau ingin tanya-tanya lebih lanjut? Langsung balas pesan ini atau hubungi admin sekarang!
+    """.trimIndent()
 
     /**
      * Builds a `wa.me` link from a loosely-formatted number.

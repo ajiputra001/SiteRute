@@ -1,18 +1,18 @@
 {
-  "versionCode": 12,
-  "versionName": "1.2.9",
+  "versionCode": 13,
+  "versionName": "1.3.0",
   "apkUrl": "https://github.com/ajiputra001/SiteRute/releases/latest/download/SiteRoute.apk",
-  "sha256": "36ff7074bb2c1317339cf0456483e854d1219b02f8afa268294f28a033ecb2b0",
-  "notes": "Manifest kini punya beberapa host cadangan, jadi update tetap jalan kalau satu host tidak terjangkau.",
+  "sha256": "576405957eb72932fd9073ba5e492191282ba366df08731f751517f986e933cc",
+  "notes": "Promosi AUTO PETRIP aktif.",
   "force": false,
   "minVersionCode": 1,
   "promo": {
-    "id": "petrip-v1",
-    "enabled": false,
+    "id": "petrip-v2",
+    "enabled": true,
     "title": "AUTO PETRIP",
     "tagline": "Isi petrip harian otomatis",
-    "body": "Setiap hari driver harus mengisi petrip secara manual. AUTO PETRIP mengisi petrip harian otomatis, jadi tidak perlu isi form satu per satu. Hubungi admin kalau berminat.",
+    "body": "Masih capek isi form petrip manual setiap hari? 😫\n\nSekarang tidak perlu lagi buang waktu buka dan input data satu per satu. Gunakan *AUTO PETRIP*, solusi otomatis untuk pengisian laporan petrip harian driver!\n\nKeunggulan menggunakan *AUTO PETRIP*:\n✅ *Otomatis Setiap Hari* – Sistem memproses pengisian petrip secara otomatis tanpa perlu input manual berulang.\n✅ *Hemat Waktu & Tenaga* – Tidak perlu lagi repot mengisi form satu per satu setelah selesai narik.\n✅ *Anti Lupa & Tepat Waktu* – Laporan harian selalu tercatat rutin tanpa khawatir terlewat.\n✅ *Praktis & Terima Beres* – Sekali aktivasi, driver cukup fokus bekerja di jalan.\n\nTinggalkan cara lama yang ribet dan bikin urusan petrip harian jadi jauh lebih efisien.\n\nTertarik mengaktifkan *AUTO PETRIP* atau ingin tanya-tanya lebih lanjut? Langsung balas pesan ini atau hubungi admin sekarang!",
     "cta": "Hubungi admin",
-    "wa": ""
+    "wa": "6285641858425"
   }
 }

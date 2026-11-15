@@ -51,13 +51,7 @@ Future<void> showPromoSheet(BuildContext context, PromoInfo promo) {
                   ],
                 ),
                 const SizedBox(height: 18),
-                Text(
-                  promo.body,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    height: 1.55,
-                    color: scheme.onSurface.withOpacity(0.86),
-                  ),
-                ),
+                _body(context, promo.body),
                 const SizedBox(height: 20),
                 SizedBox(
                   height: 50,
@@ -108,8 +102,36 @@ Future<void> _open(BuildContext ctx, String url) async {
     );
 }
 
-/// Monogram stand-in for the promo's own logo: no asset needed, and it reads as a brand
-/// mark rather than a generic Material icon.
+/// Renders the campaign copy.
+///
+/// The text is authored for WhatsApp, where `*…*` means bold. Splitting on the marker and
+/// alternating weight reproduces that emphasis here instead of printing asterisks the
+/// operator never intended anyone to see. An unbalanced marker simply leaves the tail
+/// normal — a malformed remote string must not break the sheet.
+Widget _body(BuildContext context, String text) {
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+  final base = theme.textTheme.bodyMedium!.copyWith(
+    height: 1.62,
+    color: scheme.onSurface.withOpacity(0.88),
+  );
+  final strong = base.copyWith(
+    fontWeight: FontWeight.w700,
+    color: scheme.onSurface,
+  );
+
+  final parts = text.split('*');
+  final spans = <TextSpan>[];
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i].isEmpty) continue;
+    spans.add(TextSpan(text: parts[i], style: i.isOdd ? strong : base));
+  }
+
+  return Text.rich(TextSpan(children: spans));
+}
+
+/// The promo's mark: the app's own logo, so the card reads as part of SiteRoute instead
+/// of carrying a second, invented brand.
 class _Badge extends StatelessWidget {
   const _Badge({required this.scheme, required this.size});
 
@@ -121,27 +143,15 @@ class _Badge extends StatelessWidget {
     return Container(
       width: size,
       height: size,
+      padding: EdgeInsets.all(size * 0.09),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.primary,
-            scheme.primary.withOpacity(0.62),
-          ],
-        ),
+        // The logo is drawn for a light plate; on the dark card it needs its own backing
+        // or the mark disappears.
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(size * 0.27),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.3)),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        'AP',
-        style: TextStyle(
-          color: scheme.onPrimary,
-          fontWeight: FontWeight.w800,
-          fontSize: size * 0.36,
-          letterSpacing: -0.5,
-        ),
-      ),
+      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
     );
   }
 }
