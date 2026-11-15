@@ -1,26 +1,43 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Remembers which promo the operator closed.
+/// Remembers which promo the operator closed, and when.
 ///
-/// Stored as the promo **id**, not a boolean. That way a new campaign — a different id in
-/// the manifest — shows up again for everyone, while the one they closed stays closed.
-/// A boolean would silence every future promo forever after the first dismiss.
+/// Two keys, not one: the **id** keeps a closed campaign closed, and the **timestamp**
+/// lets it come back after a cooldown. A plain boolean would silence every future promo
+/// forever; an id alone would silence it permanently too, which is the behaviour this
+/// replaced.
+///
+/// The id is still required because a campaign change must show up immediately rather
+/// than waiting out the remaining cooldown.
 class PromoStore {
   static const String _kDismissedId = 'promo.dismissedId';
+  static const String _kDismissedAt = 'promo.dismissedAt';
 
-  static Future<String?> dismissedId() async {
+  /// The dismissal record.
+  ///
+  /// [at] is null when the id was stored by an older build that had no timestamp; callers
+  /// treat that as "age unknown" and show the promo, which is the safe direction — better
+  /// to show a campaign than to hide it forever because of a stale key.
+  static Future<({String? id, DateTime? at})> dismissal() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_kDismissedId);
+    final id = prefs.getString(_kDismissedId);
+    final ms = prefs.getInt(_kDismissedAt);
+    return (
+      id: id,
+      at: ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms),
+    );
   }
 
   static Future<void> dismiss(String id) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kDismissedId, id);
+    await prefs.setInt(_kDismissedAt, DateTime.now().millisecondsSinceEpoch);
   }
 
-  /// Clears the dismissal — used when the operator opens the promo again from the sheet.
+  /// Clears the dismissal — used when the operator opens the promo again.
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kDismissedId);
+    await prefs.remove(_kDismissedAt);
   }
 }

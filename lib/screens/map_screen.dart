@@ -12,6 +12,7 @@ import '../models/map_source.dart';
 import '../models/mock_request.dart';
 import '../models/spot.dart';
 import '../services/geocoder.dart';
+import '../services/promo_policy.dart';
 import '../services/promo_store.dart';
 import '../services/settings_store.dart';
 import '../services/spot_store.dart';
@@ -73,9 +74,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   /// Promo from the manifest (or the built-in fallback). Null means "show nothing".
   PromoInfo? _promo;
 
-  /// Id of the promo the operator closed. Stored by id, not as a flag, so a new campaign
-  /// reappears while the dismissed one stays dismissed.
+  /// Dismissal record for the promo: which campaign was closed, and when.
   String? _dismissedPromoId;
+  DateTime? _dismissedPromoAt;
+
+  /// How long a closed promo stays closed before it may return.
+  ///
+  /// Three days was the operator's choice: long enough not to nag a driver who is not
+  /// interested, short enough that a new driver — or the same one after a few shifts —
+  /// still sees the offer.
+  static const Duration _promoCooldown = Duration(days: 3);
+
+  /// Fires when the cooldown elapses while the app is open, so the card comes back on
+  /// its own instead of waiting for some unrelated rebuild.
+  Timer? _promoTimer;
 
   /// Whether the popup is on screen. Separate from `_updateInfo` because a soft notice
   /// can be dismissed without losing the knowledge that an update exists — the periodic
@@ -135,6 +147,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     // version check failed, so it is captured before the reachable guard below.
     if (info.promo?.id != _promo?.id) {
       setState(() => _promo = info.promo);
+      // A new campaign can un-hide the card, and a changed id needs the reveal timer
+      // re-armed because the previous one belonged to the old campaign.
+      _schedulePromoReveal();
     }
 
     // A manifest that could not be reached carries no information — leave whatever is on
@@ -177,6 +192,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
     _updateTimer?.cancel();
+    _promoTimer?.cancel();
     _statusVN.dispose();
     _bearingVN.dispose();
     _searchCtrl.dispose();
@@ -189,7 +205,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final settings = await AppSettings.load();
     final spots = await SpotStore.load();
     final status = await MockBridge.status();
-    final dismissedPromo = await PromoStore.dismissedId();
+    final dismissal = await PromoStore.dismissal();
 
     if (!mounted) return;
     _statusVN.value = status;
@@ -201,9 +217,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _spots = spots;
       _status = status;
       _running = status.running;
-      _dismissedPromoId = dismissedPromo;
+      _dismissedPromoId = dismissal.id;
+      _dismissedPromoAt = dismissal.at;
       _loaded = true;
     });
+    _schedulePromoReveal();
     // The map may already exist by the time prefs resolve (it is built on the first
     // frame behind the splash). Assigning `_target` alone does not move a live camera,
     // so the position is pushed explicitly once the real value is known.
@@ -959,9 +977,40 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   /// Placed after the primary action on purpose: the Start button must not move when a
   /// campaign is running, and a driver who is mid-shift should never have to scroll past
   /// an ad to reach it. Rendered as a single 46 px row, not a second card.
+  /// Whether the card should stay hidden for [promo] right now.
+  ///
+  /// Hidden only when the *same* campaign was closed and the cooldown has not elapsed.
+  /// A different id shows immediately; a missing timestamp (dismissed by an older build)
+  /// shows too, because unknown age must not silence the card forever.
+  bool _promoHidden(PromoInfo promo) => !promoDueToReturn(
+        now: DateTime.now(),
+        dismissedAt: _dismissedPromoAt,
+        sameCampaign: _dismissedPromoId == promo.id,
+        cooldown: _promoCooldown,
+      );
+
+  /// Re-shows the card the moment its cooldown ends, without waiting for a rebuild.
+  void _schedulePromoReveal() {
+    _promoTimer?.cancel();
+    final promo = _promo;
+    if (promo == null) return;
+
+    final remaining = promoReappearIn(
+      now: DateTime.now(),
+      dismissedAt: _dismissedPromoAt,
+      sameCampaign: _dismissedPromoId == promo.id,
+      cooldown: _promoCooldown,
+    );
+    if (remaining == null) return;
+
+    _promoTimer = Timer(remaining, () {
+      if (mounted) setState(() {});
+    });
+  }
+
   Widget _buildPromoRow() {
     final promo = _promo;
-    if (promo == null || _dismissedPromoId == promo.id) {
+    if (promo == null || _promoHidden(promo)) {
       return const SizedBox.shrink();
     }
 
@@ -1028,7 +1077,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             ),
             // Separate target from the row: closing must never open the sheet.
             IconButton(
-              tooltip: 'Sembunyikan promosi',
+              tooltip: 'Sembunyikan 3 hari',
               onPressed: _dismissPromo,
               icon: const Icon(Icons.close, size: 15),
               visualDensity: VisualDensity.compact,
@@ -1051,7 +1100,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Future<void> _dismissPromo() async {
     final promo = _promo;
     if (promo == null) return;
-    setState(() => _dismissedPromoId = promo.id);
+    final now = DateTime.now();
+    setState(() {
+      _dismissedPromoId = promo.id;
+      _dismissedPromoAt = now;
+    });
+    _schedulePromoReveal();
     await PromoStore.dismiss(promo.id);
   }
 

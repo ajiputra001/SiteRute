@@ -216,6 +216,29 @@ Rilis terbaru: https://github.com/ajiputra001/SiteRute/releases
 
 ---
 
+## 7c. Promosi AUTO PETRIP
+
+Kartu promo tampil di bawah tombol Mulai. Ketuk untuk detail dan tombol **Hubungi admin**
+yang membuka WhatsApp dengan pesan sudah terisi.
+
+**Masa sembunyi.** Menekan X menyembunyikan kartu selama **3 hari**, lalu muncul kembali
+dengan sendirinya — tanpa perlu membuka ulang aplikasi. Yang disimpan adalah pasangan
+`id` + waktu tutup:
+
+| Kejadian | Muncul lagi? |
+|---|---|
+| Tutup X, tutup-buka app, restart HP | belum — tunggu 3 hari |
+| Lewat 3 hari | ya, otomatis |
+| `id` promo diganti di `update.json` | ya, seketika |
+| Hapus data app / install ulang | ya |
+
+Aturannya ada di `lib/services/promo_policy.dart` dan diuji di
+`test/promo_policy_test.dart` (batas 3 hari, kampanye baru, dan kasus tanpa timestamp).
+
+Nomor, teks, tombol, dan pesan otomatis bisa diubah dari `update.json` tanpa build ulang.
+
+---
+
 ## 8. Verifikasi
 
 ```bash
