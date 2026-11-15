@@ -7,7 +7,7 @@
   "force": false,
   "minVersionCode": 1,
   "promo": {
-    "id": "petrip-v1",
+    "id": "petrip-v2",
     "enabled": true,
     "title": "AUTO PETRIP",
     "tagline": "Isi petrip harian otomatis",
