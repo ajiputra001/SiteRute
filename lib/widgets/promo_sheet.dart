@@ -74,7 +74,7 @@ Future<void> showPromoSheet(BuildContext context, PromoInfo promo) {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Chat langsung ke admin lewat WhatsApp.',
+                  'Pesan sudah disiapkan — tinggal kirim.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: scheme.onSurface.withOpacity(0.4),

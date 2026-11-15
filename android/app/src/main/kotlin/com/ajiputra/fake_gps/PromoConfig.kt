@@ -23,13 +23,14 @@ package com.ajiputra.fake_gps
  *   "tagline": "Isi petrip harian otomatis",
  *   "body": "…",
  *   "cta": "Hubungi admin",
- *   "wa": "6281234567890"
+ *   "wa": "6281234567890",
+ *   "prefill": "Halo Admin AUTO PETRIP, saya tertarik…"
  * }
  * ```
  *
- * A remote block wins over the local defaults, so the number, the copy and even the
- * wording of the button can change without shipping an APK. Bumping `id` re-shows the
- * promo to operators who had dismissed the previous one.
+ * A remote block wins over the local defaults, so the number, the copy, the pre-filled
+ * message and even the wording of the button can change without shipping an APK.
+ * Bumping `id` re-shows the promo to operators who had dismissed the previous one.
  */
 object PromoConfig {
 
@@ -70,14 +71,24 @@ object PromoConfig {
     """.trimIndent()
 
     /**
-     * Builds a `wa.me` link from a loosely-formatted number.
+     * The message pre-filled into the chat box when the CTA is tapped.
+     *
+     * Written in the driver's voice, first person, and short enough to send without
+     * editing. The operator can override it per-campaign with `promo.prefill`.
+     */
+    const val PREFILL: String =
+        "Halo Admin AUTO PETRIP 👋 Saya tertarik dengan AUTO PETRIP dan ingin tahu " +
+            "cara aktivasinya. Bisa dibantu?"
+
+    /**
+     * Builds a `wa.me` link from a loosely-formatted number, with [text] pre-filled.
      *
      * Accepts what an operator is likely to paste — `0812-3456-7890`, `+62 812 3456
      * 7890` — normalises the Indonesian leading zero to the 62 country code, and returns
      * null when what is left cannot be a phone number. A half-typed number must not
      * become a link that opens WhatsApp on a stranger's chat.
      */
-    fun waUrl(raw: String): String? {
+    fun waUrl(raw: String, text: String = ""): String? {
         var digits = raw.filter { it.isDigit() }
         if (digits.isEmpty()) return null
         // Local form: 0812… → 62812…
@@ -85,6 +96,13 @@ object PromoConfig {
         // Reject anything outside a plausible mobile length rather than guessing.
         if (digits.length < 10 || digits.length > 15) return null
         if (!digits.startsWith("62")) return null
-        return "https://wa.me/$digits"
+
+        val base = "https://wa.me/$digits"
+        if (text.isBlank()) return base
+
+        // URLEncoder emits '+' for spaces, which wa.me shows literally as a plus sign.
+        // Percent-encoding spaces keeps the drafted message readable in the chat box.
+        val encoded = java.net.URLEncoder.encode(text, "UTF-8").replace("+", "%20")
+        return "$base?text=$encoded"
     }
 }

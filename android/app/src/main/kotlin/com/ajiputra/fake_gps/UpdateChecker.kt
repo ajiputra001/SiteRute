@@ -198,7 +198,10 @@ object UpdateChecker {
         if (!o.optBoolean("enabled", true)) return null
 
         val url = o.optString("url", "").takeIf { it.isNotBlank() }
-            ?: PromoConfig.waUrl(o.optString("wa", ""))
+            ?: PromoConfig.waUrl(
+                raw = o.optString("wa", ""),
+                text = o.optString("prefill", PromoConfig.PREFILL),
+            )
             ?: return null
 
         val id = o.optString("id", "").takeIf { it.isNotBlank() }
@@ -222,7 +225,7 @@ object UpdateChecker {
      * promo without a working contact is worse than no promo.
      */
     fun localPromo(): Promo? {
-        val url = PromoConfig.waUrl(PromoConfig.CONTACT_WA) ?: return null
+        val url = PromoConfig.waUrl(PromoConfig.CONTACT_WA, PromoConfig.PREFILL) ?: return null
         return Promo(
             id = PromoConfig.ID,
             enabled = true,
